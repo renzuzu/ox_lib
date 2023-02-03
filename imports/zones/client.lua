@@ -14,19 +14,21 @@ local glm = require 'glm'
 ---@type { [number]: CZone }
 Zones = {}
 
-local function makeTriangles(t)
-    local t1, t2
-    if t[3] and t[4] then
-        t1 = mat(t[1], t[2], t[3])
-        t2 = mat(t[2], t[3], t[4])
-    else
-        t1 = mat(t[1], t[2], t[3] or t[4])
+local function nextFreePoint(points, b, len)
+    for i = 1, len do
+        local n = (i + b) % len
+
+        n = n ~= 0 and n or len
+
+        if points[n] then
+            return n
+        end
     end
-    return t1, t2
 end
 
 local function getTriangles(polygon)
     local triangles = {}
+
     if polygon:isConvex() then
         for i = 2, #polygon - 1 do
             triangles[#triangles + 1] = mat(polygon[1], polygon[i], polygon[i + 1])
@@ -35,217 +37,48 @@ local function getTriangles(polygon)
     end
 
     local points = {}
-    local sides = {}
-    local horizontals = {}
+
     for i = 1, #polygon do
-        local h
-        local point = polygon[i]
-        local unique = true
-
-        for j = 1, #horizontals do
-            if point.y == horizontals[j][1].y then
-                h = j
-                horizontals[j][#horizontals[j] + 1] = point
-                unique = false
-                break
-            end
-        end
-
-        if unique then
-            h = #horizontals + 1
-            horizontals[h] = { point }
-        end
-
-        sides[i] = { polygon[i], polygon[i + 1] or polygon[1] }
-        points[polygon[i]] = { side = i, horizontal = h, uses = 0 }
+        points[i] = polygon[i]
     end
 
-    local extremes = { polygon.projectToAxis(polygon, vec(1, 0, 0)) }
-    for i = 1, #horizontals do
-        local horizontal = horizontals[i]
-        local hLineStart, hLineEnd = vec(extremes[1], horizontal[1].yz), vec(extremes[2], horizontal[1].yz)
-        for j = 1, #sides do
-            local sideStart, sideEnd = sides[j][1], sides[j][2]
-            local bool, d, d2 = glm.segment.intersectsSegment(hLineStart, hLineEnd, sideStart, sideEnd)
-            if d > 0.001 and d < 0.999 and d2 > 0.001 and d2 < 0.999 then
-                local newPoint = glm.segment.getPoint(hLineStart, hLineEnd, d)
-                local valid
-                for l = 1, #horizontal do
-                    local point = horizontal[l]
-                    valid = polygon.contains(polygon, (point + newPoint) / 2, 0.1)
-                    if valid then
-                        for m = 1, #sides do
-                            local sideStart, sideEnd = sides[m][1], sides[m][2]
-                            local bool, d, d2 = glm.segment.intersectsSegment(point, newPoint, sides[m][1], sides[m][2])
-                            if d > 0.001 and d < 0.999 and d2 > 0.001 and d2 < 0.999 then
-                                valid = false
-                                break
-                            end
-                        end
-                    end
-                    if valid then
-                        horizontals[i][#horizontals[i] + 1] = newPoint
-                        sides[j][#sides[j] + 1] = newPoint
-                        points[newPoint] = { side = j, horizontal = i, uses = 0 }
-                        break
-                    end
-                end
-            end
+    local a, b, c = 1, 2, 3
+    local len = #points
+
+    while len - #triangles > 2 do
+        if polygon:containsSegment(glm.segment.getPoint(polygon[a], polygon[c], 0.01), glm.segment.getPoint(polygon[a], polygon[c], 0.99)) then
+            triangles[#triangles + 1] = mat(polygon[a], polygon[b], polygon[c])
+            points[b] = false
+
+            b = c
+            c = nextFreePoint(points, b, len)
+        else
+            a = b
+            b = c
+            c = nextFreePoint(points, b, len)
         end
     end
 
-    local function up(a, b)
-        return a.y > b.y
-    end
-
-    local function down(a, b)
-        return a.y < b.y
-    end
-
-    local function right(a, b)
-        return a.x > b.x
-    end
-
-    local function left(a, b)
-        return a.x < b.x
-    end
-
-    for i = 1, #sides do
-        local side = sides[i]
-
-        ---@type number | function
-        local direction = side[1].y - side[2].y
-        direction = direction > 0 and up or down
-        table.sort(side, direction)
-
-        for j = 1, #side - 1 do
-            local a, b = side[j], side[j + 1]
-            local aData, bData = points[a], points[b]
-            local aPos, bPos
-            if aData.horizontal ~= bData.horizontal then
-                local aHorizontal, bHorizontal = horizontals[aData.horizontal], horizontals[bData.horizontal]
-                local c, d
-
-                if aHorizontal[2] then
-                    ---@type number | function
-                    local direction = a.x - (a.x ~= aHorizontal[1].x and aHorizontal[1].x or aHorizontal[2].x)
-                    direction = direction > 0 and right or left
-                    table.sort(aHorizontal, direction)
-
-                    for l = 1, #aHorizontal do
-                        if a == aHorizontal[l] then
-                            aPos = l
-                        elseif c and aPos then
-                            break
-                        else
-                            c = aHorizontal[l]
-                        end
-                    end
-                end
-
-                if bHorizontal[2] then
-                    ---@type number | function
-                    local direction = b.x - (b.x ~= bHorizontal[1].x and bHorizontal[1].x or bHorizontal[2].x)
-                    direction = direction > 0 and right or left
-                    table.sort(bHorizontal, direction)
-
-                    for l = 1, #bHorizontal do
-                        if b == bHorizontal[l] then
-                            bPos = l
-                        elseif bPos and d then
-                            break
-                        else
-                            d = bHorizontal[l]
-                        end
-                    end
-                end
-
-                if aData.uses < 2 then
-                    if c and d then
-                        if points[c].side ~= points[d].side then
-                            local done
-                            for l = aPos > 1 and aPos - 1 or 1, aPos > #aHorizontal and aPos + 1 or #aHorizontal do
-                                c = aHorizontal[l]
-                                if c ~= a then
-                                    for m = bPos > 1 and bPos - 1 or 1, bPos > #bHorizontal and bPos + 1 or #bHorizontal do
-                                        d = bHorizontal[m]
-                                        local sideDifference = points[c].side - points[d].side
-                                        if d ~= b and sideDifference >= -1 and sideDifference <= 1 then
-                                            done = true
-                                            break
-                                        end
-                                    end
-                                end
-                                if done then break end
-                            end
-                        end
-                        c = polygon.contains(polygon, (a + c) / 2, 0.1) and c or nil
-                        d = polygon.contains(polygon, (b + d) / 2, 0.1) and d or nil
-                    end
-
-                    if c and not d then
-                        for l = aPos > 1 and aPos - 1 or 1, aPos < #aHorizontal and aPos + 1 or #aHorizontal do
-                            c = aHorizontal[l]
-                            if c and c ~= a then
-                                local sideDifference = bData.side - points[c].side
-                                if sideDifference >= -1 and sideDifference <= 1 then
-                                    break
-                                end
-                            end
-                        end
-                    elseif d and not c then
-                        for l = bPos > 1 and bPos - 1 or 1, bPos < #bHorizontal and bPos + 1 or #bHorizontal do
-                            d = aHorizontal[l]
-                            if d and d ~= b then
-                                local sideDifference = aData.side - points[d].side
-                                if sideDifference >= -1 and sideDifference <= 1 then
-                                    break
-                                end
-                            end
-                        end
-                    end
-
-                    if c or d then
-                        local t = { a, b, c, d }
-                        nTriangles = #triangles
-                        triangles[nTriangles + 1], triangles[nTriangles + 2] = makeTriangles(t)
-                        if c and d then
-                            for i = 1, #t do
-                                points[t[i]].uses += 1
-                            end
-                        else
-                            for k, v in pairs(t) do
-                                points[v].uses += 2
-                            end
-                        end
-                    end
-                end
-            else
-                aData.uses += 1
-                bData.uses += 1
-            end
-        end
-    end
     return triangles
 end
 
+local insideZones = {}
+local enteringZones = {}
+local exitingZones = {}
+local enteringSize = 0
+local exitingSize = 0
+local tick
+local glm_polygon_contains = glm.polygon.contains
+
 local function removeZone(self)
     Zones[self.id] = nil
+    insideZones[self.id] = nil
+    enteringZones[self.id] = nil
+    exitingZones[self.id] = nil
 end
-
-local inside = {}
-local insideCount = 0
-local tick
-
-local glm_polygon_contains = glm.polygon.contains
 
 CreateThread(function()
     while true do
-        if insideCount ~= 0 then
-            table.wipe(inside)
-            insideCount = 0
-        end
-
         local coords = GetEntityCoords(cache.ped)
         cache.coords = coords
 
@@ -264,36 +97,61 @@ CreateThread(function()
                     zone.insideZone = true
 
                     if zone.onEnter then
-                        zone:onEnter()
+                        enteringSize += 1
+                        enteringZones[enteringSize] = zone
                     end
-                end
 
-                if zone.inside or zone.debug then
-                    insideCount += 1
-                    inside[insideCount] = zone
+                    if zone.inside or zone.debug then
+                        insideZones[zone.id] = zone
+                    end
                 end
             else
                 if zone.insideZone then
                     zone.insideZone = false
+                    insideZones[zone.id] = nil
 
                     if zone.onExit then
-                        zone:onExit()
+                        exitingSize += 1
+                        exitingZones[exitingSize] = zone
                     end
                 end
 
                 if zone.debug then
-                    insideCount += 1
-                    inside[insideCount] = zone
+                    insideZones[zone.id] = zone
                 end
             end
         end
 
-        if not tick then
-            if insideCount ~= 0 then
-                tick = SetInterval(function()
-                    for i = 1, insideCount do
-                        local zone = inside[i]
+        if exitingSize > 0 then
+            table.sort(exitingZones, function(a, b)
+                return a.distance > b.distance
+            end)
 
+            for i = 1, exitingSize do
+                exitingZones[i]:onExit()
+            end
+
+            exitingSize = 0
+            table.wipe(exitingZones)
+        end
+
+        if enteringSize > 0 then
+            table.sort(enteringZones, function(a, b)
+                return a.distance < b.distance
+            end)
+
+            for i = 1, enteringSize do
+                enteringZones[i]:onEnter()
+            end
+
+            enteringSize = 0
+            table.wipe(enteringZones)
+        end
+
+        if not tick then
+            if next(insideZones) then
+                tick = SetInterval(function()
+                    for _, zone in pairs(insideZones) do
                         if zone.debug then
                             zone:debug()
 
@@ -306,7 +164,7 @@ CreateThread(function()
                     end
                 end)
             end
-        elseif insideCount == 0 then
+        elseif not next(insideZones) then
             tick = ClearInterval(tick)
         end
 
@@ -344,8 +202,7 @@ local function debugPoly(self)
 end
 
 local function debugSphere(self)
-    DrawMarker(28, self.coords.x, self.coords.y, self.coords.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, self.radius, self.radius,
-        self.radius, 255, 42, 24, 100, false, false, 0, true, false, false, false)
+    DrawMarker(28, self.coords.x, self.coords.y, self.coords.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, self.radius, self.radius, self.radius, 255, 42, 24, 100, false, false, 0, false, false, false, false)
 end
 
 local function contains(self, coords)
@@ -414,7 +271,7 @@ lib.zones = {
         data.contains = contains
 
         if data.debug then
-            data.triangles = { makeTriangles({ data.polygon[1], data.polygon[2], data.polygon[4], data.polygon[3] }) }
+            data.triangles = { mat(data.polygon[1], data.polygon[2], data.polygon[3]), mat(data.polygon[1], data.polygon[3], data.polygon[4]) }
             data.debug = debugPoly
         end
 

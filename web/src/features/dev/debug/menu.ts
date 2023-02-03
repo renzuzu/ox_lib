@@ -18,12 +18,23 @@ export const debugMenu = () => {
           },
           {
             label: 'Vehicle class',
-            values: [
-              { label: 'nice', description: 'description 1' },
-              { label: 'even nicer', description: 'description 2' },
-              'pogchamp',
-            ],
+            values: ['pogchamp', 'nice champ', { label: 'POGGERS', description: 'CHAMPPERS' }],
             icon: 'tag',
+            description: 'Side scroll general description',
+          },
+          {
+            label: 'Oil Level',
+            progress: 30,
+            icon: 'oil-can',
+            description: 'Remaining Oil: 30%',
+          },
+          {
+            label: 'Durability',
+            progress: 80,
+            icon: 'car-side',
+            description: 'Durability: 80%',
+            colorScheme: 'blue',
+            iconColor: '#55778d'
           },
           { label: 'Option 1' },
           { label: 'Option 2' },

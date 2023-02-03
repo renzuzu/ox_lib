@@ -10,8 +10,10 @@ import {
   Spacer,
   Image,
   HStack,
+  Progress,
 } from '@chakra-ui/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import ReactMarkdown from 'react-markdown';
 import { Option, ContextMenuProps } from '../../../interfaces/context';
 import { fetchNui } from '../../../utils/fetchNui';
 
@@ -66,16 +68,26 @@ const Item: React.FC<{
                   }}
                 />
               )}
-              <Box>
-                <Box paddingBottom={button.description ? 1 : 0}>
+              {button?.image && <Image src={button.image} marginRight = "10px"/> }
+              <Box w="100%">
+                <Box>
                   <Text w="100%" fontWeight="medium" color={button.disabled ? '#718096' : undefined}>
-                    {button.title ? button.title : buttonKey}
+                    <ReactMarkdown>{button.title ? button.title : buttonKey}</ReactMarkdown>
                   </Text>
                 </Box>
                 {button.description && (
                   <Box paddingBottom={1} color={button.disabled ? '#718096' : undefined}>
-                    <Text>{button.description}</Text>
+                    <Text><ReactMarkdown>{button.description}</ReactMarkdown></Text>
                   </Box>
+                )}
+                {button?.progress && (
+                  <Progress
+                    value={button.progress}
+                    size="sm"
+                    colorScheme={button.colorScheme || 'gray'}
+                    borderRadius="md"
+                    marginRight="5px"
+                  />
                 )}
               </Box>
               {(button.menu || button.arrow) && button.arrow !== false && (
@@ -99,7 +111,6 @@ const Item: React.FC<{
                 >
                   <PopoverBody>
                     <>
-                      {button.image && <Image src={button.image} />}
                       {Array.isArray(button.metadata) ? (
                         button.metadata.map((metadata: string | { label: string; value: any }, index: number) => (
                           <Text key={`context-metadata-${index}`}>

@@ -2,12 +2,14 @@ import { useToast, type ToastPosition, Box, HStack, Text } from '@chakra-ui/reac
 import { useNuiEvent } from '../../hooks/useNuiEvent';
 import { IconProp } from '@fortawesome/fontawesome-svg-core';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import ReactMarkdown from 'react-markdown';
 
 export interface NotificationProps {
   title?: string;
   description?: string;
   duration?: number;
   position?: ToastPosition;
+  variant?: string;
   status?: 'info' | 'warning' | 'success' | 'error';
   id?: number;
 }
@@ -53,7 +55,7 @@ const Notifications: React.FC = () => {
             )}
             <Box w="100%">
               {data.title && <Text as="b">{data.title}</Text>}
-              {data.description && <Text>{data.description}</Text>}
+              {data.description && <Text><ReactMarkdown>{data.description}</ReactMarkdown></Text>}
             </Box>
           </HStack>
         </Box>
@@ -71,6 +73,7 @@ const Notifications: React.FC = () => {
       description: data.description,
       duration: data.duration || 4000,
       position: data.position || 'top-right',
+      variant: data.variant,
       status: data.status,
     });
   });

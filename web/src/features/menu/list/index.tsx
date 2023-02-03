@@ -1,5 +1,5 @@
 import { Box, Stack, Tooltip } from '@chakra-ui/react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNuiEvent } from '../../../hooks/useNuiEvent';
 import ListItem from './ListItem';
 import Header from './Header';
@@ -11,10 +11,13 @@ import React from 'react';
 
 export interface MenuItem {
   label: string;
+  progress?: number;
+  colorScheme?: string;
   checked?: boolean;
   values?: Array<string | { label: string; description: string }>;
   description?: string;
   icon?: IconProp;
+  iconColor?: string;
   defaultIndex?: number;
   close?: boolean;
 }
@@ -26,10 +29,6 @@ export interface MenuSettings {
   items: Array<MenuItem>;
   startItemIndex?: number;
 }
-
-const isValuesObject = (values?: Array<string | { label: string; description: string }>) => {
-  return Array.isArray(values) && typeof values === 'object';
-};
 
 const ListMenu: React.FC = () => {
   const [menu, setMenu] = useState<MenuSettings>({
@@ -51,6 +50,7 @@ const ListMenu: React.FC = () => {
   };
 
   const moveMenu = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (firstRenderRef.current) firstRenderRef.current = false;
     switch (e.code) {
       case 'ArrowDown':
         setSelected((selected) => {
@@ -96,11 +96,7 @@ const ListMenu: React.FC = () => {
   };
 
   useEffect(() => {
-    if (firstRenderRef.current) {
-      firstRenderRef.current = false;
-      return;
-    }
-    if (menu.items[selected]?.checked === undefined) return;
+    if (menu.items[selected]?.checked === undefined || firstRenderRef.current) return;
     const timer = setTimeout(() => {
       fetchNui('changeChecked', [selected, checkedStates[selected]]).catch();
     }, 100);
@@ -108,11 +104,7 @@ const ListMenu: React.FC = () => {
   }, [checkedStates]);
 
   useEffect(() => {
-    if (firstRenderRef.current) {
-      firstRenderRef.current = false;
-      return;
-    }
-    if (!menu.items[selected]?.values) return;
+    if (!menu.items[selected]?.values || firstRenderRef.current) return;
     const timer = setTimeout(() => {
       fetchNui('changeIndex', [selected, indexStates[selected]]).catch();
     }, 100);
@@ -152,6 +144,13 @@ const ListMenu: React.FC = () => {
 
     return () => window.removeEventListener('keydown', keyHandler);
   }, [visible]);
+
+  const isValuesObject = useCallback(
+    (values?: Array<string | { label: string; description: string }>) => {
+      return Array.isArray(values) && typeof values[indexStates[selected]] === 'object';
+    },
+    [indexStates, selected]
+  );
 
   useNuiEvent('closeMenu', () => closeMenu(true, undefined, true));
 

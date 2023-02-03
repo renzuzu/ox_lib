@@ -1,3 +1,4 @@
+if cache.game == 'redm' then return end
 --[[
 	This module was experimental and won't be worked on or used further.
 	May be removed in the future.
@@ -11,6 +12,7 @@ local Core = {
 
 ---@deprecated
 function lib.getCore()
+    print('^3lib.getCore will be removed in a future update (v3.0.0).^0')
 	local result
 
 	Citizen.CreateThreadNow(function()
