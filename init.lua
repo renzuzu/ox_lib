@@ -76,8 +76,6 @@ end
 
 lib = setmetatable({
 	name = ox_lib,
-    ---@deprecated
-	service = context,
 	context = context,
 	exports = {},
 	onCache = function(key, cb)
@@ -157,7 +155,7 @@ if context == 'client' then
 		end,
 	})
 
-	RegisterNetEvent(('%s:notify'):format(cache.resource), function(data)
+	RegisterNetEvent(('__ox_notify_%s'):format(cache.resource), function(data)
 		if locale then
 			if data.title then
 				data.title = locale(data.title) or data.title
@@ -174,7 +172,7 @@ if context == 'client' then
 	cache.playerId = PlayerId()
 	cache.serverId = GetPlayerServerId(cache.playerId)
 else
-	local notify = ('%s:notify'):format(cache.resource)
+	local notify = ('__ox_notify_%s'):format(cache.resource)
 
 	function lib.notify(source, data)
 		TriggerClientEvent(notify, source, data)
