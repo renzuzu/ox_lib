@@ -1,8 +1,3 @@
-local isOpen = false
-local menus = {}
-local menuItems = {}
-local currentRadial = nil
-
 ---@class RadialMenuItem
 ---@field id string
 ---@field icon string
@@ -14,18 +9,28 @@ local currentRadial = nil
 ---@field id string
 ---@field items RadialMenuItem[]
 
----Registers a radial sub menu with predefined options.
----@param radial RadialMenuProps
-function lib.registerRadial(radial)
-    menus[radial.id] = radial
-end
+local isOpen = false
+
+---@type table<string, RadialMenuProps>
+local menus = {}
+
+---@type RadialMenuItem[]
+local menuItems = {}
+
+---@type string[]
+local menuHistory = {}
+
+---@type RadialMenuProps?
+local currentRadial = nil
 
 ---Open a registered radial submenu with the given id.
 ---@param id string
 local function showRadial(id)
-    local radial = menus[id]
+    local radial = id and menus[id]
 
-    if not radial then return error('No radial menu with such id found.') end
+    if id and not radial then
+        return error('No radial menu with such id found.')
+    end
 
     currentRadial = radial
 
@@ -43,10 +48,63 @@ local function showRadial(id)
     SendNUIMessage({
         action = 'openRadialMenu',
         data = {
-            items = radial.items,
-            sub = true
+            items = radial?.items or menuItems,
+            sub = radial and true or nil
         }
     })
+end
+
+---Refresh the current menu items or return from a submenu to its parent.
+local function refreshRadial(menuId)
+    if not isOpen then return end
+
+    if currentRadial and menuId then
+        if menuId == currentRadial.id then
+            return showRadial(menuId)
+        else
+            for i = 1, #menuHistory do
+                local subMenuId = menuHistory[i]
+
+                if subMenuId == menuId then
+                    local parent = menus[subMenuId]
+
+                    for j = 1, #parent.items do
+                        -- If we still have a path to the current submenu, refresh instead of returning
+                        if parent.items[j].menu == currentRadial.id then
+                            return -- showRadial(currentRadial.id)
+                        end
+                    end
+
+                    currentRadial = parent
+
+                    for j = #menuHistory, i, -1 do
+                        menuHistory[j] = nil
+                    end
+
+                    return showRadial(currentRadial.id)
+                end
+            end
+        end
+
+        return
+    end
+
+    table.wipe(menuHistory)
+    showRadial()
+end
+
+---Registers a radial sub menu with predefined options.
+---@param radial RadialMenuProps
+function lib.registerRadial(radial)
+    menus[radial.id] = radial
+
+    if currentRadial then
+        refreshRadial(radial.id)
+    end
+end
+
+function lib.getCurrentRadialId()
+    return currentRadial and currentRadial.id
 end
 
 function lib.hideRadial()
@@ -58,6 +116,7 @@ function lib.hideRadial()
     })
 
     SetNuiFocus(false, false)
+    table.wipe(menuHistory)
 
     isOpen = false
     currentRadial = nil
@@ -81,38 +140,40 @@ function lib.addRadialItem(items)
         menuItems[menuSize + 1] = items
     end
 
-    if isOpen then
-        SendNUIMessage({
-            action = 'refreshItems',
-            data = menuItems
-        })
+    if isOpen and not currentRadial then
+        refreshRadial()
     end
 end
 
 ---Removes an item from the global radial menu with the given id.
 ---@param id string
 function lib.removeRadialItem(id)
+    local menuItem
+
     for i = 1, #menuItems do
-        local item = menuItems[i]
-        if item.id == id then
+        menuItem = menuItems[i]
+
+        if menuItem.id == id then
             table.remove(menuItems, i)
             break
         end
     end
-    if isOpen then
-        SendNUIMessage({
-            action = 'refreshItems',
-            data = menuItems
-        })
-    end
+
+    if not isOpen then return end
+
+    refreshRadial(id)
 end
 
 RegisterNUICallback('radialClick', function(index, cb)
     cb(1)
 
-    local item = not currentRadial and menuItems[index + 1] or currentRadial.items[index + 1]
+    local item = (currentRadial and currentRadial.items or menuItems)[index + 1]
 
     if item.menu then
+        if currentRadial then
+            menuHistory[#menuHistory + 1] = currentRadial.id
+        end
+
         showRadial(item.menu)
     else
         lib.hideRadial()
@@ -123,11 +184,24 @@ end)
 
 RegisterNUICallback('radialBack', function(_, cb)
     cb(1)
-    if currentRadial.menu then
-        return showRadial(currentRadial.menu)
+
+    local numHistory = #menuHistory
+    local lastMenu = numHistory > 0 and menuHistory[numHistory]
+
+    if lastMenu then
+        menuHistory[numHistory] = nil
+        return showRadial(lastMenu)
     end
 
     currentRadial = nil
+
+    -- Hide current menu and allow for transition
+    SendNUIMessage({
+        action = 'openRadialMenu',
+        data = false
+    })
+
+    Wait(100)
 
     SendNUIMessage({
         action = 'openRadialMenu',
